@@ -39,8 +39,29 @@ PyTypeObject CTFace_Type;
 static CTFontRef window_title_font = nil;
 
 static double g_font_adv = 0;
-static CGGlyph g_special_glyph_pct = 0; // '%' to scale
-static CGGlyph g_special_glyph_W = 0;   // 'W' to scale
+static unsigned short special_chars[] = { '%', 'W' };
+static size_t num_special_chars = sizeof(special_chars) / sizeof(special_chars[0]);
+static CGGlyph special_glyphs[sizeof(special_chars) / sizeof(special_chars[0])] = {0};
+
+static bool
+is_special_glyph(CGGlyph glyph) {
+    for (size_t i = 0; i < num_special_chars; i++) {
+        if (glyph == special_glyphs[i])
+            return true;
+    }
+    return false;
+}
+
+static bool
+fill_special_glyph(unsigned short ch, CGGlyph glyph) {
+    for (size_t i = 0; i < num_special_chars; i++) {
+        if (ch == special_chars[i]) {
+            special_glyphs[i] = glyph;
+            return true;
+        }
+    }
+    return false;
+}
 
 static PyObject*
 convert_cfstring(CFStringRef src, int free_src) {
@@ -595,15 +616,10 @@ cell_metrics(PyObject *s, unsigned int* cell_width, unsigned int* cell_height, u
     CTFontGetGlyphsForCharacters(self->ct_font, chars, glyphs, count);
     for (i = 0; i < count; i++) {
         if (glyphs[i]) {
-            w = (unsigned int)(ceilf(
-                        CTFontGetAdvancesForGlyphs(self->ct_font, kCTFontOrientationHorizontal, glyphs+i, NULL, 1)));
-            if (w > width) width = w;
             g_font_adv = CTFontGetAdvancesForGlyphs(self->ct_font, kCTFontOrientationHorizontal, glyphs+i, NULL, 1);
-            if (chars[i] == '%') {
-                g_special_glyph_pct = glyphs[i];
-            } else if (chars[i] == 'W') {
-                g_special_glyph_W = glyphs[i];
-            }
+            fill_special_glyph(chars[i], glyphs[i]);
+            w = (unsigned int)(ceilf(g_font_adv));
+            if (w > width) width = w;
         }
     }
     *cell_width = MAX(1u, width);
@@ -791,7 +807,7 @@ render_glyphs(CTFontRef font, unsigned int width, unsigned int height, unsigned 
     setup_ctx_for_alpha_mask(render_ctx);
 
     // scale special character for SF Mono
-    if (num_glyphs == 1 && width < g_font_adv && (buffers.glyphs[0] == g_special_glyph_pct || buffers.glyphs[0] == g_special_glyph_W)) {
+    if (num_glyphs == 1 && width < g_font_adv && is_special_glyph(buffers.glyphs[0])) {
         CGFloat scale_factor = (double)width / g_font_adv; // g_font_adv => 14.835938
         CGAffineTransform scale_transform = CGAffineTransformMakeScale(scale_factor, 1.0);
         CGContextConcatCTM(render_ctx, scale_transform);
