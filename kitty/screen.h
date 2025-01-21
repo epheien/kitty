@@ -15,7 +15,7 @@
 typedef enum ScrollTypes { SCROLL_LINE = -999999, SCROLL_PAGE, SCROLL_FULL } ScrollType;
 
 typedef struct {
-    bool mLNM, mIRM, mDECTCEM, mDECSCNM, mDECOM, mDECAWM, mDECCOLM, mDECARM, mDECCKM,
+    bool mLNM, mIRM, mDECTCEM, mDECSCNM, mDECOM, mDECAWM, mDECCOLM, mDECARM, mDECCKM, mCOLOR_PREFERENCE_NOTIFICATION,
          mBRACKETED_PASTE, mFOCUS_TRACKING, mDECSACE, mHANDLE_TERMIOS_SIGNALS, mINBAND_RESIZE_NOTIFICATION;
     MouseTrackingMode mouse_tracking_mode;
     MouseTrackingProtocol mouse_tracking_protocol;
@@ -173,6 +173,7 @@ typedef struct {
     } paused_rendering;
     CharsetState charset;
     ListOfChars *lc;
+    monotonic_t parsing_at;
 } Screen;
 
 
@@ -277,6 +278,7 @@ void screen_set_key_encoding_flags(Screen *self, uint32_t val, uint32_t how);
 void screen_push_key_encoding_flags(Screen *self, uint32_t val);
 void screen_pop_key_encoding_flags(Screen *self, uint32_t num);
 uint8_t screen_current_key_encoding_flags(Screen *self);
+void screen_modify_other_keys(Screen *self, unsigned int);
 void screen_report_key_encoding_flags(Screen *self);
 int screen_detect_url(Screen *screen, unsigned int x, unsigned int y);
 int screen_cursor_at_a_shell_prompt(const Screen *);

@@ -751,10 +751,20 @@ prepare_to_render_os_window(OSWindow *os_window, monotonic_t now, unsigned int *
                 WD.screen->cursor_render_info.is_focused = os_window->is_focused;
                 set_os_window_title_from_window(w, os_window);
                 *active_window_bg = window_bg;
-                if (OPT(cursor_trail) && update_cursor_trail(&tab->cursor_trail, w, now, os_window)) {
-                    needs_render = true;
-                    set_maximum_wait(OPT(repaint_delay));
+                if (OPT(cursor_trail)) {
+                    if (update_cursor_trail(&tab->cursor_trail, w, now, os_window)) {
+                        needs_render = true;
+                        // A max wait of zero causes key input processing to be
+                        // slow so handle the case of OPT(repaint_delay) == 0, see https://github.com/kovidgoyal/kitty/pull/8066
+                        set_maximum_wait(MAX(OPT(repaint_delay), ms_to_monotonic_t(1ll)));
+                    } else if (OPT(cursor_trail) > now - WD.screen->cursor->position_changed_by_client_at) {
+                        // If update_cursor_trail failed due to time threshold, the trail animation
+                        // should be evaluated again shortly. Schedule next update when enough time
+                        // has passed since the cursor was last moved.
+                        set_maximum_wait(OPT(cursor_trail) - now + WD.screen->cursor->position_changed_by_client_at);
+                    }
                 }
+
             } else {
                 if (WD.screen->cursor_render_info.render_even_when_unfocused) {
                     if (collect_cursor_info(&WD.screen->cursor_render_info, w, now, os_window)) needs_render = true;
@@ -1212,6 +1222,8 @@ process_cocoa_pending_actions(void) {
     if (cocoa_pending_actions[CLOSE_WINDOW]) { call_boss(close_window, NULL); }
     if (cocoa_pending_actions[RESET_TERMINAL]) { call_boss(clear_terminal, "sO", "reset", Py_True ); }
     if (cocoa_pending_actions[CLEAR_TERMINAL_AND_SCROLLBACK]) { call_boss(clear_terminal, "sO", "to_cursor", Py_True ); }
+    if (cocoa_pending_actions[CLEAR_SCROLLBACK]) { call_boss(clear_terminal, "sO", "scrollback", Py_True ); }
+    if (cocoa_pending_actions[CLEAR_SCREEN]) { call_boss(clear_terminal, "sO", "to_cursor_scroll", Py_True ); }
     if (cocoa_pending_actions[RELOAD_CONFIG]) { call_boss(load_config_file, NULL); }
     if (cocoa_pending_actions[TOGGLE_MACOS_SECURE_KEYBOARD_ENTRY]) { call_boss(toggle_macos_secure_keyboard_entry, NULL); }
     if (cocoa_pending_actions[TOGGLE_FULLSCREEN]) { call_boss(toggle_fullscreen, NULL); }
@@ -2032,28 +2044,8 @@ send_data_to_peer(PyObject *self UNUSED, PyObject *args) {
     Py_RETURN_NONE;
 }
 
-static PyObject *
-random_unix_socket(PyObject *self UNUSED, PyObject *args UNUSED) {
-#ifndef SO_PASSCRED
-    errno = ENOTSUP;
-    return PyErr_SetFromErrno(PyExc_OSError);
-#else
-    int fd, optval = 1;
-    struct sockaddr_un bind_addr = {.sun_family=AF_UNIX};
-    fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0) return PyErr_SetFromErrno(PyExc_OSError);
-    if (setsockopt(fd, SOL_SOCKET, SO_PASSCRED, &optval, sizeof optval) != 0) goto fail;
-    if (bind(fd, (struct sockaddr *)&bind_addr, sizeof(sa_family_t)) != 0) goto fail;
-    return PyLong_FromLong((long)fd);
-fail:
-    safe_close(fd, __FILE__, __LINE__);
-    return PyErr_SetFromErrno(PyExc_OSError);
-#endif
-}
-
 static PyMethodDef module_methods[] = {
     METHODB(safe_pipe, METH_VARARGS),
-    METHODB(random_unix_socket, METH_NOARGS),
     {"add_timer", (PyCFunction)add_python_timer, METH_VARARGS, ""},
     {"remove_timer", (PyCFunction)remove_python_timer, METH_VARARGS, ""},
     METHODB(monitor_pid, METH_VARARGS),

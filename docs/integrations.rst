@@ -147,9 +147,13 @@ protocol
 
 .. _tool_matplotlib:
 
-`matplotlib <https://github.com/jktr/matplotlib-backend-kitty>`_
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Show matplotlib plots directly in kitty
+matplotlib
+^^^^^^^^^^^^^^
+
+There exist multiple backends for matplotlib to draw images directly in kitty.
+
+* `matplotlib-backend-kitty <https://github.com/jktr/matplotlib-backend-kitty>`__
+* `kitcat <https://github.com/mil-ad/kitcat>`__
 
 .. _tool_KittyTerminalImage:
 
@@ -289,6 +293,14 @@ Keyboard based text selection for the kitty scrollback buffer.
 
 Miscellaneous
 ------------------
+
+.. tool_gattino:
+
+`gattino <https://github.com/salvozappa/gattino>`__
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Integrate kitty with an LLM to convert plain language prompts into shell
+commands.
 
 .. tool_kitty_smart_tab:
 

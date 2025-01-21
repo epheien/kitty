@@ -84,16 +84,92 @@ consumption to do the same tasks.
 Detailed list of changes
 -------------------------------------
 
-0.37.1 [future]
+0.39.1 [future]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Splits layout: Allow setting the bias of the current split using ``layout_action bias`` (:iss:`8222`)
+
+- hints kitten: Workaround for some broken light color themes that make the hints text color too low contrast to read (:iss:`7330`)
+
+
+0.39.0 [2025-01-16]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- :doc:`diff kitten <kittens/diff>`: Automatically use dark/light color scheme based on the color scheme of the parent terminal. Can be controlled via the new :opt:`kitten-diff.color_scheme` option. Note that this is a **default behavior change** (:iss:`8170`)
+
+- Allow dynamically generating configuration by running an arbitrary program using the new :code:`geninclude` directive in :file:`kitty.conf`
+
+- When a program running in kitty reports progress of a task display it as a percentage in the tab title. Controlled by the :opt:`tab_title_template` option
+
+- When mapping a custom kitten allow using shell escaping for the kitten path (:iss:`8178`)
+
+- Fix border colors not being changed by auto light/dark themes at startup (:iss:`8180`)
+
+- ssh kitten: Fix kitten not being on PATH when SSHing into Debian systems (:iss:`7160`)
+
+- diff kitten: Abort when run inside a terminal that does not support the kitty keyboard protocol (:iss:`8185`)
+
+- :doc:`query kitten <kittens/query_terminal>`: Add support for reporting name of the OS the terminal emulator is running on (:iss:`8201`)
+
+- macOS: Allow using the Passwords app to autofill passwords via the Edit->Autofill menu mimicking other macOS applications (:pull:`8195`)
+
+- macOS: Add menu items to the Edit menu to clear the screen and scrollback
+
+- Fix the :ac:`clear_terminal scrollback <clear_terminal>` action also clearing screen, not just the scrollback
+
+- When reloading configuration fix auto color themes not being re-applied (:iss:`8203`)
+
+0.38.1 [2024-12-26]
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- macOS: Fix a regression in the previous release that broke rendering of Emoji using the VS16 variation selector (:iss:`8130`)
+
+- When automatically changing colors based on OS color preference, first reset
+  all colors to default before applying the new theme so that even colors not
+  specified in the theme are correct (:iss:`8124`)
+
+- Graphics: Fix deleted but not freed images without any placements being incorrectly freed on a subsequent delete command (:disc:`8129`)
+
+- Graphics: Fix deletion of images by id not working for images with no placements (:disc:`8129`)
+
+- Add support for `escape code protocol <https://github.com/contour-terminal/contour/blob/master/docs/vt-extensions/color-palette-update-notifications.md>`__ for notifying applications on dark/light color scheme change
+
+- Cursor trails: Fix pure vertical movement sometimes not triggering a trail and holding down a key in nvim causing the trail to be glitchy (:pull:`8152`, :pull:`8153`)
+
+- macOS: Fix mouse cursor shape not always being reset to text cursor when mouse re-enters kitty (:iss:`8155`)
+
+- clone-in-kitty: Fix :envvar:`KITTY_WINDOW_ID` being cloned and thus having incorrect value (:iss:`8161`)
+
+
+0.38.0 [2024-12-15]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - Allow :ref:`specifying individual color themes <auto_color_scheme>` to use so that kitty changes colors automatically following the OS dark/light mode
+
+- :opt:`notify_on_cmd_finish`: Automatically remove notifications when the window gains focus or the next notification is shown. Clearing behavior can be configured (:pull:`8100`)
 
 - Discard OSC 9 notifications that start with :code:`4;` because some misguided software is using it for "progress reporting" (:iss:`8011`)
 
 - Wayland GNOME: Workaround bug in mutter causing double tap on titlebar to not always work (:iss:`8054`)
 
 - clipboard kitten: Fix a bug causing kitten to hang in filter mode when input data size is not divisible by 3 and larger than 8KB (:iss:`8059`)
+
+- Wayland: Fix an abort when a client program tries to set an invalid title containing interleaved escape codes and UTF-8 multi-byte characters (:iss:`8067`)
+
+- Graphics protocol: Fix delete by number not deleting newest image with the specified number (:iss:`8071`)
+
+- Fix dashed and dotted underlines not being drawn at the same y position as straight underlines at all font sizes (:iss:`8074`)
+
+- panel kitten: Allow creating floating and on-top panels with arbitrary placement and size on Wayland (:pull:`8068`)
+
+- :opt:`remote_control_password`: Fix using a password without any actions not working (:iss:`8082`)
+
+- Fix enlarging window when a long line is wrapped between the first line of the scrollback buffer and the screen inserting a spurious newline (:iss:`7033`)
+
+- When re-attaching a detached tab preserve internal layout state such as biases and orientations (:iss:`8106`)
+
+- hints/unicode_input kittens: Do not lose keypresses that are sent very rapidly via an automation tool immediately after the kitten is launched (:iss:`7089`)
+
 
 0.37.0 [2024-10-30]
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

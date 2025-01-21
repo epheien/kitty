@@ -7,8 +7,12 @@
 
 #pragma once
 
+#ifdef _POSIX_C_SOURCE
+#error "Must include \"data-types.h\" before any system headers"
+#endif
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
+
 #include <assert.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -317,7 +321,7 @@ void enter_event(void);
 void mouse_event(const int, int, int);
 void focus_in_event(void);
 void scroll_event(double, double, int, int);
-void on_key_input(GLFWkeyevent *ev);
+void on_key_input(const GLFWkeyevent *ev);
 void request_window_attention(id_type, bool);
 #ifndef __APPLE__
 void play_canberra_sound(const char *which_sound, const char *event_id, bool is_path, const char *role, const char *theme_name);

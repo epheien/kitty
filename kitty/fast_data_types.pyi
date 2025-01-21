@@ -14,11 +14,14 @@ from kitty.typing import EdgeLiteral, NotRequired, ReadableBuffer, WriteableBuff
 # Constants {{{
 GLFW_LAYER_SHELL_NONE: int
 GLFW_LAYER_SHELL_PANEL: int
+GLFW_LAYER_SHELL_TOP: int
+GLFW_LAYER_SHELL_OVERLAY: int
 GLFW_LAYER_SHELL_BACKGROUND: int
 GLFW_EDGE_TOP: int
 GLFW_EDGE_BOTTOM: int
 GLFW_EDGE_LEFT: int
 GLFW_EDGE_RIGHT: int
+GLFW_EDGE_NONE: int
 GLFW_FOCUS_NOT_ALLOWED: int
 GLFW_FOCUS_EXCLUSIVE: int
 GLFW_FOCUS_ON_DEMAND: int
@@ -744,6 +747,10 @@ class Color:
         pass
 
     @property
+    def is_dark(self) -> bool:
+        pass
+
+    @property
     def as_sgr(self) -> str:
         pass
 
@@ -814,8 +821,8 @@ class ColorProfile:
 
     def __init__(self, opts: Optional[Options] = None): ...
 
-    def as_dict(self) -> Dict[str, int | None | tuple[tuple[Color, float], ...]]:
-        pass
+    def as_dict(self) -> Dict[str, int | None | tuple[tuple[Color, float], ...]]: ...
+    def basic_colors(self) -> Dict[str, int | None | tuple[tuple[Color, float], ...]]: ...
 
     def as_color(self, val: int) -> Optional[Color]:
         pass
@@ -1188,6 +1195,7 @@ class Screen:
     linebuf: LineBuf
     in_bracketed_paste_mode: bool
     in_band_resize_notification: bool
+    color_preference_notification: bool
     cursor_visible: bool
     scrolled_by: int
     cursor: Cursor
@@ -1583,10 +1591,6 @@ def sigqueue(pid: int, signal: int, value: int) -> None:
     pass
 
 
-def random_unix_socket() -> int:
-    pass
-
-
 def read_signals(fd: int, callback: Callable[[SignalInfo], None]) -> None:
     pass
 
@@ -1712,6 +1716,8 @@ def systemd_move_pid_into_new_scope(pid: int, scope_name: str, description: str)
 def play_desktop_sound_async(name: str, event_id: str = 'test sound', is_path: bool = False, theme_name: str = '') -> str: ...
 def cocoa_play_system_sound_by_id_async(sound_id: int) -> None: ...
 def glfw_get_system_color_theme(query_if_unintialized: bool = True) -> Literal['light', 'dark', 'no_preference']: ...
+def set_redirect_keys_to_overlay(os_window_id: int, tab_id: int, window_id: int, overlay_window_id: int) -> None: ...
+def buffer_keys_in_window(os_window_id: int, tab_id: int, window_id: int, enabled: bool = True) -> bool: ...
 
 class MousePosition(TypedDict):
     cell_x: int

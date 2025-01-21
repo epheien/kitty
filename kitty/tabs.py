@@ -30,6 +30,7 @@ from .fast_data_types import (
     GLFW_RELEASE,
     add_tab,
     attach_window,
+    buffer_keys_in_window,
     current_focused_os_window_id,
     detach_window,
     focus_os_window,
@@ -45,11 +46,13 @@ from .fast_data_types import (
     ring_bell,
     set_active_tab,
     set_active_window,
+    set_redirect_keys_to_overlay,
     swap_tabs,
     sync_os_window_title,
 )
 from .layout.base import Layout
 from .layout.interface import create_layout_object_for, evict_cached_layouts
+from .progress import ProgressState
 from .tab_bar import TabBar, TabBarData
 from .types import ac
 from .typing import EdgeLiteral, SessionTab, SessionType, TypedDict
@@ -123,6 +126,9 @@ class Tab:  # {{{
     inactive_fg: Optional[int] = None
     inactive_bg: Optional[int] = None
     confirm_close_window_id: int = 0
+    num_of_windows_with_progress: int = 0
+    total_progress: int = 0
+    last_focused_window_with_progress_id: int = 0
 
     def __init__(
         self,
@@ -161,6 +167,23 @@ class Tab:  # {{{
             self._set_current_layout(l0)
             self.startup(session_tab)
 
+    def update_progress(self) -> None:
+        self.num_of_windows_with_progress = 0
+        self.total_progress = 0
+        self.last_focused_window_with_progress_id = 0
+        focused_at = 0.
+        for window in self:
+            p = window.progress
+            if p.state is ProgressState.unset:
+                continue
+            if p.state in (ProgressState.set, ProgressState.paused):
+                self.total_progress += p.percent
+                self.num_of_windows_with_progress += 1
+            if window.last_focused_at > focused_at or (not window.last_focused_at and window.id > self.last_focused_window_with_progress_id):
+                focused_at = window.last_focused_at
+                self.last_focused_window_with_progress_id = window.id
+        self.mark_tab_bar_dirty()
+
     def has_single_window_visible(self) -> bool:
         if self.current_layout.only_active_window_visible:
             return True
@@ -184,9 +207,14 @@ class Tab:  # {{{
     def take_over_from(self, other_tab: 'Tab') -> None:
         self.name, self.cwd = other_tab.name, other_tab.cwd
         self.enabled_layouts = list(other_tab.enabled_layouts)
-        if other_tab._current_layout_name:
-            self._set_current_layout(other_tab._current_layout_name)
         self._last_used_layout = other_tab._last_used_layout
+        if clname := other_tab._current_layout_name:
+            cl = other_tab.current_layout
+            other_tab._set_current_layout(clname)
+            cl.set_owner(self.os_window_id, self.id)
+            self.current_layout: Layout = cl
+            self._current_layout_name = clname
+            self.mark_tab_bar_dirty()
         for window in other_tab.windows:
             detach_window(other_tab.os_window_id, other_tab.id, window.id)
         self.windows = other_tab.windows
@@ -513,6 +541,10 @@ class Tab:  # {{{
         overlay_behind: bool = False, bias: Optional[float] = None
     ) -> None:
         self.current_layout.add_window(self.windows, window, location, overlay_for, put_overlay_behind=overlay_behind, bias=bias)
+        if overlay_behind and (w := self.active_window):
+            set_redirect_keys_to_overlay(self.os_window_id, self.id, w.id, window.id)
+            buffer_keys_in_window(self.os_window_id, self.id, window.id, True)
+            window.keys_redirected_till_ready_from = w.id
         self.mark_tab_bar_dirty()
         self.relayout()
 
@@ -1234,7 +1266,8 @@ class TabManager:  # {{{
                 title, t is at, needs_attention, t.id,
                 len(t), t.num_window_groups, t.current_layout.name or '',
                 has_activity_since_last_focus, t.active_fg, t.active_bg,
-                t.inactive_fg, t.inactive_bg
+                t.inactive_fg, t.inactive_bg, t.num_of_windows_with_progress,
+                t.total_progress, t.last_focused_window_with_progress_id,
             ))
         return ans
 

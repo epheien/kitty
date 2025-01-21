@@ -10,6 +10,7 @@
     if (PyModule_AddFunctions(module, module_methods) != 0) return false; \
 }
 
+#include "data-types.h"
 #include "control-codes.h"
 #include "state.h"
 #include "iqsort.h"
@@ -183,7 +184,8 @@ screen_reset(Screen *self) {
     linebuf_clear(self->linebuf, BLANK_CHAR);
     historybuf_clear(self->historybuf);
     clear_hyperlink_pool(self->hyperlink_pool);
-    grman_clear(self->grman, false, self->cell_size);
+    grman_clear(self->main_grman, false, self->cell_size);  // dont delete images in scrollback
+    grman_clear(self->alt_grman, true, self->cell_size);
     self->modes = empty_modes;
     self->saved_modes = empty_modes;
     self->active_hyperlink_id = 0;
@@ -233,12 +235,12 @@ typedef struct CursorTrack {
 } CursorTrack;
 
 static LineBuf*
-realloc_lb(LineBuf *old, unsigned int lines, unsigned int columns, index_type *nclb, index_type *ncla, HistoryBuf *hb, CursorTrack *a, CursorTrack *b, ANSIBuf *as_ansi_buf) {
+realloc_lb(LineBuf *old, unsigned int lines, unsigned int columns, index_type *nclb, index_type *ncla, HistoryBuf *hb, CursorTrack *a, CursorTrack *b, ANSIBuf *as_ansi_buf, bool history_buf_last_line_is_split) {
     LineBuf *ans = alloc_linebuf(lines, columns, old->text_cache);
     if (ans == NULL) { PyErr_NoMemory(); return NULL; }
     a->temp.x = a->before.x; a->temp.y = a->before.y;
     b->temp.x = b->before.x; b->temp.y = b->before.y;
-    linebuf_rewrap(old, ans, nclb, ncla, hb, &a->temp.x, &a->temp.y, &b->temp.x, &b->temp.y, as_ansi_buf);
+    linebuf_rewrap(old, ans, nclb, ncla, hb, &a->temp.x, &a->temp.y, &b->temp.x, &b->temp.y, as_ansi_buf, history_buf_last_line_is_split);
     return ans;
 }
 
@@ -394,6 +396,7 @@ screen_resize(Screen *self, unsigned int lines, unsigned int columns) {
     if (!init_overlay_line(self, columns, true)) return false;
 
     // Resize main linebuf
+    bool history_buf_last_line_is_split = history_buf_endswith_wrap(self->historybuf);
     HistoryBuf *nh = realloc_hb(self->historybuf, self->historybuf->ynum, columns, &self->as_ansi_buf);
     if (nh == NULL) return false;
     Py_CLEAR(self->historybuf); self->historybuf = nh;
@@ -403,7 +406,7 @@ screen_resize(Screen *self, unsigned int lines, unsigned int columns) {
         prompt_copy = (PyObject*)alloc_linebuf(self->lines, self->columns, self->text_cache);
         num_of_prompt_lines = prevent_current_prompt_from_rewrapping(self, (LineBuf*)prompt_copy, &num_of_prompt_lines_above_cursor);
     }
-    LineBuf *n = realloc_lb(self->main_linebuf, lines, columns, &num_content_lines_before, &num_content_lines_after, self->historybuf, &cursor, &main_saved_cursor, &self->as_ansi_buf);
+    LineBuf *n = realloc_lb(self->main_linebuf, lines, columns, &num_content_lines_before, &num_content_lines_after, self->historybuf, &cursor, &main_saved_cursor, &self->as_ansi_buf, history_buf_last_line_is_split);
     if (n == NULL) return false;
     Py_CLEAR(self->main_linebuf); self->main_linebuf = n;
     if (is_main) setup_cursor(cursor);
@@ -413,7 +416,7 @@ screen_resize(Screen *self, unsigned int lines, unsigned int columns) {
     grman_resize(self->main_grman, self->lines, lines, self->columns, columns, num_content_lines_before, num_content_lines_after);
 
     // Resize alt linebuf
-    n = realloc_lb(self->alt_linebuf, lines, columns, &num_content_lines_before, &num_content_lines_after, NULL, &cursor, &alt_saved_cursor, &self->as_ansi_buf);
+    n = realloc_lb(self->alt_linebuf, lines, columns, &num_content_lines_before, &num_content_lines_after, NULL, &cursor, &alt_saved_cursor, &self->as_ansi_buf, false);
     if (n == NULL) return false;
     Py_CLEAR(self->alt_linebuf); self->alt_linebuf = n;
     if (!is_main) setup_cursor(cursor);
@@ -672,6 +675,7 @@ draw_combining_char(Screen *self, text_loop_state *s, char_type ch) {
     if (has_prev_char) {
         CPUCell *cp; GPUCell *gp;
         linebuf_init_cells(self->linebuf, ypos, &cp, &gp);
+        if (xpos > 0 && gp[xpos].attrs.width == 0 && gp[xpos-1].attrs.width == 2) xpos--;
         bool added = line_add_combining_char(cp, gp, self->text_cache, self->lc, ch, xpos);
         unsigned base_pos = self->lc->count - (added ? 2 : 1);
         if (ch == VS16) {  // emoji presentation variation marker makes default text presentation emoji (narrow emoji) into wide emoji
@@ -1112,6 +1116,7 @@ set_mode_from_const(Screen *self, unsigned int mode, bool val) {
         SIMPLE_MODE(DECARM)
         SIMPLE_MODE(BRACKETED_PASTE)
         SIMPLE_MODE(FOCUS_TRACKING)
+        SIMPLE_MODE(COLOR_PREFERENCE_NOTIFICATION)
         SIMPLE_MODE(HANDLE_TERMIOS_SIGNALS)
         MOUSE_MODE(MOUSE_BUTTON_TRACKING, mouse_tracking_mode, BUTTON_MODE)
         MOUSE_MODE(MOUSE_MOTION_TRACKING, mouse_tracking_mode, MOTION_MODE)
@@ -1200,6 +1205,16 @@ screen_decsace(Screen *self, unsigned int val) {
 void
 screen_reset_mode(Screen *self, unsigned int mode) {
     set_mode_from_const(self, mode, false);
+}
+
+void
+screen_modify_other_keys(Screen *self, unsigned int val) {
+    // Only report an error about modifyOtherKeys if the kitty keyboard
+    // protocol is not in effect and the application is trying to turn it on. There are some applications that try to enable both.
+    debug_input("modifyOtherKeys: %u\n", val);
+    if (!screen_current_key_encoding_flags(self) && val) {
+        log_error("The application is trying to use xterm's modifyOtherKeys. This is superseded by the kitty keyboard protocol https://sw.kovidgoyal.net/kitty/keyboard-protocol. The application should be updated to use that.");
+    }
 }
 
 uint8_t
@@ -1687,6 +1702,7 @@ copy_specific_mode(Screen *self, unsigned int mode, const ScreenModes *src, Scre
         SIMPLE_MODE(DECARM)
         SIMPLE_MODE(BRACKETED_PASTE)
         SIMPLE_MODE(FOCUS_TRACKING)
+        SIMPLE_MODE(COLOR_PREFERENCE_NOTIFICATION)
         SIMPLE_MODE(INBAND_RESIZE_NOTIFICATION)
         SIMPLE_MODE(DECCKM)
         SIMPLE_MODE(DECTCEM)
@@ -1728,6 +1744,7 @@ copy_specific_modes(Screen *self, const ScreenModes *src, ScreenModes *dest) {
     copy_specific_mode(self, DECARM, src, dest);
     copy_specific_mode(self, BRACKETED_PASTE, src, dest);
     copy_specific_mode(self, FOCUS_TRACKING, src, dest);
+    copy_specific_mode(self, COLOR_PREFERENCE_NOTIFICATION, src, dest);
     copy_specific_mode(self, INBAND_RESIZE_NOTIFICATION, src, dest);
     copy_specific_mode(self, DECCKM, src, dest);
     copy_specific_mode(self, DECTCEM, src, dest);
@@ -1788,7 +1805,7 @@ screen_cursor_position(Screen *self, unsigned int line, unsigned int column) {
         line += self->margin_top;
         line = MAX(self->margin_top, MIN(line, self->margin_bottom));
     }
-    self->cursor->position_changed_by_client_at = monotonic();
+    self->cursor->position_changed_by_client_at = self->parsing_at;
     self->cursor->x = column; self->cursor->y = line;
     screen_ensure_bounds(self, false, in_margins);
 }
@@ -2187,8 +2204,6 @@ screen_manipulate_title_stack(Screen *self, unsigned int op, unsigned int which)
 
 void
 report_device_status(Screen *self, unsigned int which, bool private) {
-    // We don't implement the private device status codes, since I haven't come
-    // across any programs that use them
     unsigned int x, y;
     static char buf[64];
     switch(which) {
@@ -2206,6 +2221,10 @@ report_device_status(Screen *self, unsigned int which, bool private) {
             int sz = snprintf(buf, sizeof(buf) - 1, "%s%u;%uR", (private ? "?": ""), y + 1, x + 1);
             if (sz > 0) write_escape_code_to_child(self, ESC_CSI, buf);
             break;
+        case 996: // https://github.com/contour-terminal/contour/blob/master/docs/vt-extensions/color-palette-update-notifications.md
+            if (private) {
+                CALLBACK("report_color_scheme_preference", NULL);
+            } break;
     }
 }
 
@@ -2229,6 +2248,7 @@ report_mode_status(Screen *self, unsigned int which, bool private) {
         KNOWN_MODE(DECCKM);
         KNOWN_MODE(BRACKETED_PASTE);
         KNOWN_MODE(FOCUS_TRACKING);
+        KNOWN_MODE(COLOR_PREFERENCE_NOTIFICATION);
         KNOWN_MODE(INBAND_RESIZE_NOTIFICATION);
 #undef KNOWN_MODE
         case ALTERNATE_SCREEN:
@@ -3868,6 +3888,7 @@ WRAP0(clear_scrollback)
 
 MODE_GETSET(in_bracketed_paste_mode, BRACKETED_PASTE)
 MODE_GETSET(focus_tracking_enabled, FOCUS_TRACKING)
+MODE_GETSET(color_preference_notification, COLOR_PREFERENCE_NOTIFICATION)
 MODE_GETSET(in_band_resize_notification, INBAND_RESIZE_NOTIFICATION)
 MODE_GETSET(auto_repeat_enabled, DECARM)
 MODE_GETSET(cursor_visible, DECTCEM)
@@ -4894,6 +4915,7 @@ static PyMethodDef methods[] = {
 
 static PyGetSetDef getsetters[] = {
     GETSET(in_bracketed_paste_mode)
+    GETSET(color_preference_notification)
     GETSET(auto_repeat_enabled)
     GETSET(focus_tracking_enabled)
     GETSET(in_band_resize_notification)
