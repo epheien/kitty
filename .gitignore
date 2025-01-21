@@ -29,3 +29,9 @@ __pycache__/
 .cache
 bypy/b
 bypy/virtual-machines.conf
+gtags.files
+GTAGS
+GRTAGS
+GPATH
+gutags
+vimp.vim
